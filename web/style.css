@@ -9,3 +9,12 @@
 .studio-check{display:flex!important;align-items:center;gap:10px;margin:10px 0;overflow-wrap:anywhere;cursor:pointer}
 .studio-check input{flex:none}
 .studio-preview{width:100%;max-height:62vh;object-fit:contain;border-radius:12px;background:#100b1c;margin:10px 0}
+/* v0.4: generous tap areas, iPhone safe areas, and no accidental horizontal scroll. */
+#ai-generate-form textarea {width:100%;min-height:78px;resize:vertical;font:inherit;}
+#ai-video-workflow-form input[type="file"] {max-width:100%;overflow:hidden;}
+@media (max-width:740px) {
+  .main {padding-bottom:calc(32px + env(safe-area-inset-bottom));}
+  .btn, .nav-link {min-height:42px;}
+  .file-row {gap:12px;flex-wrap:wrap;}
+  .form-actions {flex-wrap:wrap;}
+}
