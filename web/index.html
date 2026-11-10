@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="VEGA">
   <meta name="theme-color" content="#100b1c">
   <meta name="description" content="VEGA — manager local, supravegheat, pentru nouă personaje AI.">
   <link rel="manifest" href="/assets/manifest.webmanifest">
@@ -25,7 +27,7 @@
         <button class="btn primary full" id="auth-submit" type="submit">Intră în VEGA <span>→</span></button>
       </form>
       <p id="auth-error" class="error"></p>
-      <p class="auth-foot">🔒 Acces local · Fără abonamente · Fără publicare online</p>
+      <p class="auth-foot">🔒 Acces local/HTTPS LAN · Fără abonamente · Fără publicare online</p>
     </div>
   </div>
   <div id="app-shell" class="shell hidden">
@@ -39,6 +41,7 @@
         <button data-view="approvals" class="nav-link"><span>✓</span> Centrul de aprobări</button>
         <button data-view="calendar" class="nav-link"><span>▦</span> Calendar editorial</button>
         <button data-view="media" class="nav-link"><span>▧</span> Biblioteca media</button>
+        <button data-view="aiStudio" class="nav-link"><span>✧</span> Generator Foto / Video AI</button>
         <button data-view="mediaStudio" class="nav-link"><span>◉</span> Media Studio · Local</button>
         <button data-view="audit" class="nav-link"><span>◷</span> Jurnal & siguranță</button>
       </nav>
@@ -57,7 +60,7 @@
         </div>
       </header>
       <div id="view" class="view"></div>
-      <footer class="footer">VEGA UNIVERSAL <span>v0.3 · Media Studio</span> <span>Nu publică online · Fără YouTube</span></footer>
+      <footer class="footer">VEGA UNIVERSAL <span>v0.4 · AI Generator + iPhone HTTPS</span> <span>Nu publică online · Fără YouTube</span></footer>
     </main>
   </div>
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
