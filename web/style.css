@@ -18,3 +18,9 @@
   .file-row {gap:12px;flex-wrap:wrap;}
   .form-actions {flex-wrap:wrap;}
 }
+
+/* v0.9: 14+ navigation actions must remain reachable on smaller phones. */
+.sidebar{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#584467 #150f20}
+.sidebar nav{flex-shrink:0}
+.sidebar-bottom{margin-top:auto;flex-shrink:0;padding-bottom:12px}
+@media(max-width:860px){.sidebar{height:100dvh;max-height:100vh}}
