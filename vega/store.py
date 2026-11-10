@@ -79,6 +79,12 @@ def init_db():
           mime_type TEXT NOT NULL, file_size INTEGER NOT NULL,
           model_id TEXT REFERENCES models(id), created_at TEXT NOT NULL,
           origin TEXT NOT NULL DEFAULT 'upload');
+        CREATE TABLE IF NOT EXISTS ai_jobs (
+          id TEXT PRIMARY KEY, prompt_id TEXT NOT NULL UNIQUE, model_id TEXT NOT NULL REFERENCES models(id),
+          mode TEXT NOT NULL, input_prompt TEXT NOT NULL, state TEXT NOT NULL,
+          result_media_id TEXT REFERENCES media(id), error_text TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS ai_jobs_by_model ON ai_jobs(model_id, created_at DESC);
         CREATE TABLE IF NOT EXISTS audit (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           at TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
