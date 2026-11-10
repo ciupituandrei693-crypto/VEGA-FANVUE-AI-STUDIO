@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from . import store, media_studio, ai_engine
+from . import store, media_studio, ai_engine, extensions
 from .security import MIN_PASSWORD, check_password, current_user, hash_password, issue_token
 from .seo import suggest
 
@@ -33,9 +33,10 @@ WEB = store.ROOT / "web"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     store.init_db()
+    extensions.init_db()
     yield
 
-app = FastAPI(title="VEGA Universal API", version="0.4.0", lifespan=lifespan,
+app = FastAPI(title="VEGA Universal API", version="0.9.0", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/assets", StaticFiles(directory=WEB), name="assets")
 # In LAN mode both allowed Host headers and HTTPS are mandatory. Bind only to the chosen LAN IP.
@@ -76,7 +77,7 @@ def index():
 
 @app.get("/health")
 def health():
-    return {"service":"vega", "version":"0.4.0", "mode":"lan-https" if LAN_MODE else "local-only", "external_connections":False}
+    return {"service":"vega", "version":"0.9.0", "mode":"lan-https" if LAN_MODE else "local-only", "external_connections":False}
 
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -666,3 +667,168 @@ def ai_poll_job(job_id: str,user: str=Depends(current_user)):
     except (ai_engine.ComfyUnavailable, ai_engine.ComfyInvalid) as ex:
         # Errors from local backend should be visible, but temporary outages must remain retriable.
         raise HTTPException(503, str(ex)) from ex
+
+# ── v0.5–v0.9: local character profiles, editorial AI, manual connectors,
+#             manually sourced analytics and recoverable offline backups. ──────
+from . import backup as vega_backup
+
+class CharacterProfileInput(BaseModel):
+    visual_prompt: str = Field(default='',max_length=1500)
+    negative_prompt: str = Field(default='',max_length=700)
+    personality: str = Field(default='',max_length=900)
+    voice_profile: str = Field(default='',max_length=500)
+    reference_media_id: str | None = Field(default=None,max_length=64)
+
+@app.get('/api/characters')
+def character_profiles(user:str=Depends(current_user)):
+    return extensions.list_characters()
+
+@app.put('/api/characters/{model_id}')
+def save_character_profile(model_id:str,payload:CharacterProfileInput,user:str=Depends(current_user)):
+    try:
+        return extensions.save_character(model_id,payload.model_dump(),user)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+@app.get('/api/production/prompt/{model_id}')
+def build_character_prompt(model_id:str,scene:str='',user:str=Depends(current_user)):
+    if len(scene)>500:raise HTTPException(422,'Scena este prea lungă')
+    with store.connect() as c:
+        model=c.execute('SELECT * FROM models WHERE id=?',(model_id,)).fetchone()
+        prof=c.execute('SELECT * FROM character_profiles WHERE model_id=?',(model_id,)).fetchone()
+        if not model:raise HTTPException(404,'Personajul nu există')
+    part=prof['visual_prompt'] if prof and prof['visual_prompt'] else f'fictional adult {model["name"]}, {model["niche"]}'
+    return {'model_id':model_id,'prompt':(part+', '+scene.strip()).strip(', ')[:1600],
+            'negative':prof['negative_prompt'] if prof else '',
+            'reference_media_id':prof['reference_media_id'] if prof else None,
+            'requires_manual_identity_review':True,'backend':'local ComfyUI optional'}
+
+@app.get('/api/ollama/status')
+def local_llm_status(user:str=Depends(current_user)):
+    return extensions.ollama_status()
+
+class PackRequest(BaseModel):
+    model_id: str
+    platform: Literal['Instagram','TikTok','X','Reddit','Fanvue']
+    topic: str = Field(min_length=3,max_length=180)
+    use_local_ai: bool = False
+
+@app.post('/api/editorial/packs',status_code=201)
+def make_editorial_pack(payload:PackRequest,user:str=Depends(current_user)):
+    try:return extensions.create_pack(payload.model_id,payload.platform,payload.topic,
+                                      payload.use_local_ai,user)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+    except RuntimeError as exc:raise HTTPException(503,str(exc)) from exc
+
+@app.get('/api/editorial/packs')
+def editorial_packs(user:str=Depends(current_user)):
+    return extensions.get_packs()
+
+@app.get('/api/connectors')
+def integrations(user:str=Depends(current_user)):
+    return {'platforms':extensions.connector_status(),
+            'connected_accounts':0,'live_posting':False,'supports_manual_export':True,
+            'note':'Nu sunt integrate autentificări OAuth sau API-uri de publicare.'}
+
+@app.post('/api/deliveries/prepare/{post_id}',status_code=201)
+def prepare_manual_delivery(post_id:str,user:str=Depends(current_user)):
+    try:return extensions.prepare_delivery(post_id,user)
+    except ValueError as exc:raise HTTPException(409,str(exc)) from exc
+
+@app.get('/api/deliveries')
+def deliveries(user:str=Depends(current_user)):
+    return extensions.list_deliveries()
+
+class ManualMetric(BaseModel):
+    model_id: str
+    platform: Literal['Fanvue','Instagram','TikTok','X','Reddit']
+    report_date: str = Field(pattern=r'^\d{4}-\d{2}-\d{2}$')
+    impressions: int = Field(ge=0,le=1_000_000_000)
+    clicks: int = Field(ge=0,le=1_000_000_000)
+    subscribers: int = Field(ge=0,le=1_000_000_000)
+    gross_cents: int = Field(ge=0,le=1_000_000_000)
+    cost_cents: int = Field(ge=0,le=1_000_000_000)
+
+@app.post('/api/analytics/manual',status_code=201)
+def manual_metric(payload:ManualMetric,user:str=Depends(current_user)):
+    if payload.clicks>payload.impressions:
+        raise HTTPException(422,'Click-urile nu pot depăși afișările')
+    try:return extensions.save_metric(payload.model_dump(),user)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+@app.get('/api/analytics')
+def analytics_dashboard(user:str=Depends(current_user)):
+    return extensions.analytics()
+
+@app.get('/api/backup/status')
+def backup_status(request:Request,user:str=Depends(current_user)):
+    if request.client and request.client.host not in ('127.0.0.1','::1','testclient'):
+        raise HTTPException(403,'Backupul este administrat doar de pe PC')
+    directory=store.DATA_DIR.parent/'vega_private_backups'
+    backups=sorted(directory.glob('vega-backup-*.zip'),reverse=True)[:20] if directory.exists() else []
+    return {'storage':'private local directory',
+            'files':[{'name':p.name,'bytes':p.stat().st_size} for p in backups if p.is_file()],
+            'restore':'offline CLI only', 'github_upload':False}
+
+@app.post('/api/backup/create',status_code=201)
+def create_backup(request:Request,user:str=Depends(current_user)):
+    if request.client and request.client.host not in ('127.0.0.1','::1','testclient'):
+        raise HTTPException(403,'Backupul este disponibil numai de pe PC, nu din LAN/iPhone')
+    try:
+        result=vega_backup.make_backup()
+    except (ValueError,OSError) as exc:
+        raise HTTPException(503,'Backup eșuat. Verifică spațiul disponibil și permisiunile.') from exc
+    with store.connect() as c:store.audit(c,user,'backup.create',result['filename'],'privat; în afara repo GitHub')
+    return result
+
+@app.get('/api/backup/verify/{name}')
+def verify_backup(name:str,request:Request,user:str=Depends(current_user)):
+    if request.client and request.client.host not in ('127.0.0.1','::1','testclient'):
+        raise HTTPException(403,'Operațiune disponibilă numai de pe PC')
+    if not re.fullmatch(r'vega-backup-[0-9TZ-]+-[0-9a-f]{6}\.zip',name):
+        raise HTTPException(400,'Nume backup invalid')
+    path=store.DATA_DIR.parent/'vega_private_backups'/name
+    try:return vega_backup.verify_backup(path)
+    except (OSError,ValueError,KeyError,json.JSONDecodeError) as exc:
+        raise HTTPException(422,'Backup invalid sau corupt') from exc
+
+@app.get('/api/security/report')
+def security_report(user:str=Depends(current_user)):
+    with store.connect() as c:
+        active_sessions=c.execute('SELECT COUNT(*) FROM sessions WHERE expires_at>?',(store.utcnow(),)).fetchone()[0]
+        paused=is_paused(c)
+    return {'version':'0.9.0','https_lan_opt_in':True,'lan_mode':LAN_MODE,
+            'kill_switch_enabled':paused,'active_sessions':active_sessions,
+            'external_server':False,'cloud_gpu':False,'social_publishing':False,
+            'database_private':True,'backup_requires_local_pc':True,
+            'real_device_validation':'pending','production_hardening':'pending'}
+
+@app.get('/api/captions/status')
+def local_caption_status(user:str=Depends(current_user)):
+    model_path=os.environ.get('VEGA_WHISPER_MODEL_PATH','')
+    local_ready=bool(model_path and Path(model_path).is_dir())
+    try:import faster_whisper  # noqa:F401
+    except ImportError:local_ready=False
+    return {'available':local_ready,'engine':'faster-whisper CPU int8 (optional)',
+            'model_downloads':False,'local_model_configured':bool(model_path),'cloud':False}
+
+@app.post('/api/media/{media_id}/transcribe')
+def transcribe_local(media_id:str,user:str=Depends(current_user)):
+    model_path=os.environ.get('VEGA_WHISPER_MODEL_PATH','')
+    if not model_path or not Path(model_path).is_dir():
+        raise HTTPException(503,'Configurează calea unui model faster-whisper deja instalat local')
+    try:from faster_whisper import WhisperModel
+    except ImportError as exc:raise HTTPException(503,'Instalează opțional faster-whisper local') from exc
+    with store.connect() as c:
+        media=c.execute('SELECT * FROM media WHERE id=?',(media_id,)).fetchone()
+    if not media or not media['mime_type'].startswith('video/'):
+        raise HTTPException(422,'Ai nevoie de un clip video din biblioteca privată')
+    path=store.MEDIA_DIR/media['stored_name']
+    if not path.is_file():raise HTTPException(404,'Fișierul video lipsește')
+    try:
+        engine=WhisperModel(model_path,device='cpu',compute_type='int8',local_files_only=True)
+        segments,_=engine.transcribe(str(path),beam_size=1)
+        transcript=' '.join(s.text.strip() for s in segments)[:8000]
+    except Exception as exc:
+        raise HTTPException(503,'Transcrierea CPU nu a reușit; verifică modelul și FFmpeg') from exc
+    with store.connect() as c:store.audit(c,user,'media.transcribe',media_id,'local CPU only')
+    return {'text':transcript,'mode':'CPU-only','downloaded_models':False,'published':False}
