@@ -8,17 +8,21 @@ import re
 import secrets
 import time
 import uuid
+import io
+import ipaddress
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from PIL import Image
 from typing import Literal
 
 from fastapi import FastAPI, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from . import store, media_studio
+from . import store, media_studio, ai_engine
 from .security import MIN_PASSWORD, check_password, current_user, hash_password, issue_token
 from .seo import suggest
 
@@ -31,12 +35,24 @@ async def lifespan(_app: FastAPI):
     store.init_db()
     yield
 
-app = FastAPI(title="VEGA Universal API", version="0.3.0", lifespan=lifespan,
+app = FastAPI(title="VEGA Universal API", version="0.4.0", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/assets", StaticFiles(directory=WEB), name="assets")
+# In LAN mode both allowed Host headers and HTTPS are mandatory. Bind only to the chosen LAN IP.
+LAN_MODE = os.getenv('VEGA_LAN_MODE', '0') == '1'
+LAN_IP = os.getenv('VEGA_LAN_IP', '').strip()
+if LAN_MODE:
+    ip_obj = ipaddress.ip_address(LAN_IP)
+    if ip_obj.version != 4 or not ip_obj.is_private or ip_obj.is_loopback:
+        raise ValueError('VEGA_LAN_IP trebuie să fie un IPv4 privat din rețeaua locală')
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[LAN_IP, 'localhost', '127.0.0.1', 'testserver'])
+
 
 @app.middleware("http")
 async def secure_headers(request, call_next):
+    if LAN_MODE and request.url.scheme != 'https':
+        # Never accept credentials over an accidentally exposed plain HTTP LAN listener.
+        return JSONResponse({'detail': 'Pentru iPhone este necesar HTTPS'}, status_code=403)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -44,9 +60,15 @@ async def secure_headers(request, call_next):
     response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/api/") else "public, max-age=120"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
-        "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        "font-src 'self'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     )
+    if LAN_MODE:
+        response.headers['Strict-Transport-Security'] = 'max-age=86400'
     return response
+
+@app.get('/sw.js')
+def service_worker():
+    return FileResponse(WEB / 'sw.js', media_type='application/javascript', headers={'Cache-Control':'no-cache'})
 
 @app.get("/")
 def index():
@@ -54,7 +76,7 @@ def index():
 
 @app.get("/health")
 def health():
-    return {"service":"vega", "version":"0.3.0", "mode":"local-only", "external_connections":False}
+    return {"service":"vega", "version":"0.4.0", "mode":"lan-https" if LAN_MODE else "local-only", "external_connections":False}
 
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -479,3 +501,168 @@ def create_slideshow(payload: MontageRequest,user:str=Depends(current_user)):
     except Exception:
         dest.unlink(missing_ok=True)
         raise
+
+# v0.4 Opt-in generative AI: only a separately running ComfyUI on loopback.
+class GenerateAIRequest(BaseModel):
+    model_id: str
+    mode: Literal['image', 'video'] = 'image'
+    prompt: str = Field(min_length=8, max_length=1600)
+    negative: str = Field(default='blurry, low resolution, artifacts', max_length=700)
+    checkpoint: str = Field(default='', max_length=200)
+    source_media_id: str | None = None
+    width: Literal[512, 640, 768] = 512
+    height: Literal[512, 640, 768] = 768
+
+
+def _comfy_client():
+    # Comfy host cannot be changed through HTTP/user input: prevents LAN/cloud SSRF.
+    return ai_engine.ComfyClient()
+
+
+@app.get('/api/ai/status')
+def ai_status(user: str = Depends(current_user)):
+    try:
+        details = _comfy_client().status()
+        details['message'] = 'ComfyUI local detectat. Modelele sunt instalate separat de utilizator.'
+    except (ai_engine.ComfyUnavailable, ai_engine.ComfyInvalid) as ex:
+        details = {'connected': False, 'message': str(ex), 'endpoint':'http://127.0.0.1:8188', 'devices':[]}
+    return {**details, 'cloud_enabled':False, 'paid_api':False, 'video_requires_workflow':True}
+
+
+@app.get('/api/ai/checkpoints')
+def ai_checkpoints(user: str = Depends(current_user)):
+    try:
+        return {'checkpoints':_comfy_client().checkpoints()}
+    except (ai_engine.ComfyUnavailable, ai_engine.ComfyInvalid) as ex:
+        raise HTTPException(503, str(ex)) from ex
+
+
+@app.post('/api/ai/workflow/video')
+async def import_ai_video_workflow(file: UploadFile = File(...), user: str=Depends(current_user)):
+    """An approved ComfyUI *API-format* graph. Saved locally; never pushed to GitHub."""
+    raw = await file.read(ai_engine.MAX_WORKFLOW_BYTES + 1)
+    await file.close()
+    try:
+        graph = ai_engine.validate_workflow(raw)
+        # Fail early if it has no prompt target.
+        ai_engine.prepare_video_workflow(graph, prompt='test motion', negative='')
+    except ai_engine.ComfyInvalid as ex:
+        raise HTTPException(422, str(ex)) from ex
+    folder = store.DATA_DIR / 'workflows'
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / 'video_api.json'
+    # Save a validated JSON copy; no binary or arbitrary files are accepted.
+    dest.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding='utf-8')
+    with store.connect() as c:
+        store.audit(c, user, 'ai.workflow.import', 'video', f'{len(graph)} noduri, local')
+    return {'ok':True, 'nodes':len(graph), 'cloud_enabled':False}
+
+
+@app.post('/api/ai/generate', status_code=202)
+def ai_generate(payload: GenerateAIRequest, user: str=Depends(current_user)):
+    if payload.model_id not in {m[0] for m in store.MODELS}:
+        raise HTTPException(404, 'Modelul AI nu există')
+    if payload.mode == 'image' and payload.source_media_id:
+        raise HTTPException(422,'Imaginea de referință este utilizabilă la generarea video; T2I nu păstrează fața originală')
+    # A single queued generative job protects a modest local GPU from overlapping loads.
+    with store.connect() as c:
+        active = c.execute("SELECT COUNT(*) FROM ai_jobs WHERE state='queued'").fetchone()[0]
+    if active:
+        raise HTTPException(409, 'Există deja o generare AI în așteptare; verifică-i progresul înainte de alta')
+    client = _comfy_client()
+    try:
+        if payload.mode == 'image':
+            available = client.checkpoints()
+            checkpoint = payload.checkpoint or (available[0] if available else '')
+            if not checkpoint or checkpoint not in available:
+                raise ai_engine.ComfyInvalid('Instalează un checkpoint compatibil în ComfyUI și selectează-l')
+            workflow = ai_engine.photo_workflow(checkpoint, payload.prompt, payload.negative,
+                                                 payload.width, payload.height)
+        else:
+            template_path = store.DATA_DIR / 'workflows' / 'video_api.json'
+            if not template_path.is_file():
+                raise ai_engine.ComfyInvalid('Importă mai întâi un workflow video ComfyUI în format API')
+            template = ai_engine.validate_workflow(template_path.read_bytes())
+            uploaded = None
+            if payload.source_media_id:
+                sources = _studio_sources(payload.model_id, [payload.source_media_id])
+                # Upload a normalized PNG. ComfyUI can be CPU/AMD-based but support is not guaranteed.
+                with Image.open(sources[0]) as image:
+                    buffer = io.BytesIO()
+                    image.convert('RGB').save(buffer, format='PNG')
+                    if buffer.tell() > 50 * 1024 * 1024:
+                        raise ai_engine.ComfyInvalid('Imaginea sursă depășește limita locală')
+                uploaded = client.upload_image('source.png', buffer.getvalue())
+            workflow = ai_engine.prepare_video_workflow(template, prompt=payload.prompt,
+                                           negative=payload.negative, uploaded_image=uploaded)
+        prompt_id = client.enqueue(workflow)
+    except (ai_engine.ComfyUnavailable, ai_engine.ComfyInvalid) as ex:
+        raise HTTPException(503, str(ex)) from ex
+    job_id = uuid.uuid4().hex
+    with store.connect() as c:
+        c.execute('''INSERT INTO ai_jobs(id,prompt_id,model_id,mode,input_prompt,state,created_at,updated_at)
+                     VALUES(?,?,?,?,?,?,?,?)''',
+                  (job_id,prompt_id,payload.model_id,payload.mode,payload.prompt,'queued',store.utcnow(),store.utcnow()))
+        store.audit(c,user,'ai.generate.queued',job_id,f'{payload.mode}/{payload.model_id}; doar local')
+    return {'id':job_id,'state':'queued','mode':payload.mode,'published':False,'cloud_enabled':False}
+
+
+@app.get('/api/ai/jobs')
+def ai_jobs(user: str=Depends(current_user)):
+    with store.connect() as c:
+        return [dict(row) for row in c.execute('''SELECT id,model_id,mode,state,result_media_id,error_text,
+                        created_at,updated_at FROM ai_jobs ORDER BY created_at DESC LIMIT 40''')]
+
+
+@app.get('/api/ai/jobs/{job_id}')
+def ai_poll_job(job_id: str,user: str=Depends(current_user)):
+    with store.connect() as c:
+        job=c.execute('SELECT * FROM ai_jobs WHERE id=?',(job_id,)).fetchone()
+        if not job:raise HTTPException(404,'Sarcina AI nu există')
+        if job['state'] in ('complete','failed'):
+            return {'id':job_id,'state':job['state'],'media_id':job['result_media_id'],
+                    'error':job['error_text'],'published':False}
+    try:
+        client = _comfy_client()
+        progress, asset = ai_engine.select_result(client.history(job['prompt_id']),job['prompt_id'],job['mode'])
+        if progress == 'queued':
+            return {'id':job_id,'state':'queued','media_id':None,'published':False}
+        if progress == 'failed':
+            with store.connect() as c:
+                c.execute('UPDATE ai_jobs SET state=?,error_text=?,updated_at=? WHERE id=?',
+                          ('failed','Workflow-ul local a eșuat; verifică consola ComfyUI',store.utcnow(),job_id))
+                store.audit(c,user,'ai.generate.failed',job_id,'workflow local')
+            return {'id':job_id,'state':'failed','media_id':None,
+                    'error':'Workflow-ul local a eșuat; verifică consola ComfyUI','published':False}
+        data = client.download_output(asset)
+        extension = Path(asset['filename']).suffix.lower()
+        ai_engine.validate_generated(data,job['mode'],extension)
+        media_id=uuid.uuid4().hex
+        target=store.MEDIA_DIR/(media_id+extension)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        try:
+            target.write_bytes(data)
+            mime={'png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg',
+                  'webp':'image/webp','mp4':'video/mp4','webm':'video/webm'}[extension[1:]]
+            with store.connect() as c:
+                # Insert media first: ai_jobs.result_media_id has a foreign-key constraint.
+                c.execute('''INSERT INTO media(id,filename,stored_name,mime_type,file_size,model_id,created_at,origin)
+                             VALUES(?,?,?,?,?,?,?,?)''',
+                          (media_id,'vega_ai_'+job['mode']+'_'+media_id[:8]+extension,target.name,mime,
+                           len(data),job['model_id'],store.utcnow(),'ai_'+job['mode']))
+                # Prevent duplicate registration on simultaneous poll requests.
+                update=c.execute('UPDATE ai_jobs SET state=?,result_media_id=?,updated_at=? WHERE id=? AND state=?',
+                                 ('complete',media_id,store.utcnow(),job_id,'queued'))
+                if not update.rowcount:
+                    c.execute('DELETE FROM media WHERE id=?',(media_id,))
+                    target.unlink(missing_ok=True)
+                    old=c.execute('SELECT result_media_id,state FROM ai_jobs WHERE id=?',(job_id,)).fetchone()
+                    return {'id':job_id,'state':old['state'],'media_id':old['result_media_id'],'published':False}
+                store.audit(c,user,'ai.generate.complete',job_id,f'{job["mode"]}/{job["model_id"]}')
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return {'id':job_id,'state':'complete','media_id':media_id,'published':False}
+    except (ai_engine.ComfyUnavailable, ai_engine.ComfyInvalid) as ex:
+        # Errors from local backend should be visible, but temporary outages must remain retriable.
+        raise HTTPException(503, str(ex)) from ex
