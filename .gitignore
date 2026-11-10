@@ -13,3 +13,15 @@ __pycache__/
 *.log
 private_media/
 *.zip
+vega_private_backups/
+*.partial
+*.bak
+*.pfx
+*.p12
+*.pem
+*.key
+secrets/
+credentials/
+dist/
+build/
+dist_installer/
