@@ -1,4 +1,4 @@
-"""VEGA Universal v0.2 — authenticated local-first API; NO real publishing."""
+"""VEGA Universal v0.4 — local-first API, ComfyUI adapter and opt-in LAN HTTPS; NO publishing."""
 from __future__ import annotations
 
 import hashlib
