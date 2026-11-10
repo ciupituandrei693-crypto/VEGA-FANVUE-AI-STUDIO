@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import store
+from . import store, media_studio
 from .security import MIN_PASSWORD, check_password, current_user, hash_password, issue_token
 from .seo import suggest
 
@@ -31,7 +31,7 @@ async def lifespan(_app: FastAPI):
     store.init_db()
     yield
 
-app = FastAPI(title="VEGA Universal API", version="0.2.0", lifespan=lifespan,
+app = FastAPI(title="VEGA Universal API", version="0.3.0", lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/assets", StaticFiles(directory=WEB), name="assets")
 
@@ -54,7 +54,7 @@ def index():
 
 @app.get("/health")
 def health():
-    return {"service":"vega", "version":"0.2.0", "mode":"local-only", "external_connections":False}
+    return {"service":"vega", "version":"0.3.0", "mode":"local-only", "external_connections":False}
 
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=40, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -331,7 +331,7 @@ def audit_events(user: str=Depends(current_user)):
 @app.get("/api/media")
 def list_media(user: str=Depends(current_user)):
     with store.connect() as c:
-        return [dict(r) for r in c.execute("SELECT id,filename,mime_type,file_size,model_id,created_at FROM media ORDER BY created_at DESC LIMIT 300")]
+        return [dict(r) for r in c.execute("SELECT id,filename,mime_type,file_size,model_id,created_at,origin FROM media ORDER BY created_at DESC LIMIT 300")]
 
 @app.post("/api/media",status_code=201)
 async def upload_media(file:UploadFile=File(...),model_id:str=Form(...),user:str=Depends(current_user)):
@@ -362,6 +362,9 @@ async def upload_media(file:UploadFile=File(...),model_id:str=Form(...),user:str
               (content_type=="image/webp" and header.startswith(b"RIFF") and b"WEBP" in header[8:16]) or \
               (content_type=="video/mp4" and len(header)>12 and header[4:8]==b"ftyp")
         if not valid:raise HTTPException(415,"Conținutul fișierului nu corespunde formatului declarat")
+        if content_type.startswith("image/"):
+            try: media_studio.inspect_image(destination)
+            except ValueError as ex: raise HTTPException(415,str(ex)) from ex
         with store.connect() as c:
             c.execute("INSERT INTO media(id,filename,stored_name,mime_type,file_size,model_id,created_at) VALUES(?,?,?,?,?,?,?)",
                       (target_id,filename,destination.name,content_type,size,model_id,store.utcnow()))
@@ -388,5 +391,91 @@ def export_approved(user:str=Depends(current_user)):
     with store.connect() as c:
         items=[dict(r) for r in c.execute("SELECT * FROM posts WHERE state IN ('approved','scheduled_local') ORDER BY created_at DESC")]
         store.audit(c,user,"posts.export_local","export",str(len(items)))
-    return {"format":"VEGA_LOCAL_EXPORT_0.2", "published":False,
+    return {"format":"VEGA_LOCAL_EXPORT_0.3", "published":False,
             "platform_connections":False,"exported_at":store.utcnow(),"posts":items}
+
+
+# v0.3 Media Studio — deterministic image/video composition from owned local files.
+# No network calls, no AI models, no social publishing, no server/GPU provisioning.
+@app.get("/api/media/studio/status")
+def studio_status(user: str = Depends(current_user)):
+    return {"image_composer_ready": True, "ffmpeg_available": media_studio.ffmpeg_status()["available"],
+            "ai_image_generation": False, "ai_video_generation": False,
+            "internet_used": False, "publishing_enabled": False,
+            "formats": list(media_studio.SIZES)}
+
+class CompositionRequest(BaseModel):
+    model_id: str
+    source_media_id: str
+    format: Literal["story", "square", "landscape"] = "story"
+    headline: str = Field(min_length=3, max_length=120)
+    subtitle: str = Field(default="", max_length=160)
+
+class MontageRequest(BaseModel):
+    model_id: str
+    media_ids: list[str] = Field(min_length=1, max_length=6)
+    format: Literal["story", "square", "landscape"] = "story"
+    seconds_per_image: Literal[2, 3, 4] = 2
+
+
+def _studio_sources(model_id: str, media_ids: list[str]):
+    with store.connect() as c:
+        if not c.execute("SELECT 1 FROM models WHERE id=?",(model_id,)).fetchone():
+            raise HTTPException(404,"Modelul nu există")
+        images=[]
+        for media_id in media_ids:
+            r=c.execute("SELECT * FROM media WHERE id=? AND model_id=?",(media_id,model_id)).fetchone()
+            if not r or not r["mime_type"].startswith("image/"):
+                raise HTTPException(422,"Folosește doar fotografii care aparțin modelului selectat")
+            p=store.MEDIA_DIR/r["stored_name"]
+            if not p.is_file():
+                raise HTTPException(404,"Fișierul sursă lipsește de pe disc")
+            images.append(p)
+    return images
+
+
+def _register_studio_file(path: Path, model_id: str, user: str, origin: str, detail: str):
+    fid = path.stem
+    with store.connect() as c:
+        c.execute("INSERT INTO media(id,filename,stored_name,mime_type,file_size,model_id,created_at,origin) VALUES(?,?,?,?,?,?,?,?)",
+                  (fid, f"vega_{origin}_{fid[:8]}{path.suffix}", path.name,
+                   "image/png" if origin=="graphic" else "video/mp4", path.stat().st_size,
+                   model_id,store.utcnow(),origin))
+        store.audit(c,user,"media.studio."+origin,fid,detail)
+    return {"id":fid,"origin":origin,"filename":f"vega_{origin}_{fid[:8]}{path.suffix}",
+            "file_size":path.stat().st_size,"published":False}
+
+@app.post("/api/media/studio/image", status_code=201)
+def create_graphic(payload: CompositionRequest, user: str = Depends(current_user)):
+    source=_studio_sources(payload.model_id,[payload.source_media_id])[0]
+    with store.connect() as c:
+        name=c.execute("SELECT name FROM models WHERE id=?",(payload.model_id,)).fetchone()[0]
+    dest=store.MEDIA_DIR/(uuid.uuid4().hex+".png")
+    try:
+        media_studio.compose(source,dest,name=name,headline=payload.headline,
+                             subtitle=payload.subtitle,format=payload.format)
+        return _register_studio_file(dest,payload.model_id,user,"graphic",payload.format)
+    except ValueError as ex:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(422,str(ex)) from ex
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+
+@app.post("/api/media/studio/video",status_code=201)
+def create_slideshow(payload: MontageRequest,user:str=Depends(current_user)):
+    if len(set(payload.media_ids))!=len(payload.media_ids):
+        raise HTTPException(422,"Fotografiile trebuie să fie distincte")
+    sources=_studio_sources(payload.model_id,payload.media_ids)
+    dest=store.MEDIA_DIR/(uuid.uuid4().hex+".mp4")
+    try:
+        w,h,duration=media_studio.montage(sources,dest,format=payload.format,
+                                            seconds_per_image=payload.seconds_per_image)
+        return {**_register_studio_file(dest,payload.model_id,user,"slideshow",f"{w}x{h};{duration}s"),
+                "duration_seconds":duration, "resolution":f"{w}x{h}"}
+    except (ValueError,RuntimeError) as ex:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(422,str(ex)) from ex
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
