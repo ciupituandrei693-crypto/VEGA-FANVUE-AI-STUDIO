@@ -1,6 +1,19 @@
 # ♛ VEGA UNIVERSAL — FANVUE AI STUDIO
 
-**Versiune:** `v0.3.0` — MVP executabil **local-first**, cu autentificare și teste automate.
+**Versiune:** `v0.4.0` — generare AI locală (conector ComfyUI) și acces iPhone HTTPS în LAN.
+
+> ComfyUI și modelele foto/video NU sunt instalate în pachet. Nu am verificat generarea pe placa ta video. HTTPS iPhone este pregătit în cod, dar trebuie configurat și testat pe dispozitivul tău. Fără server extern / GPU cloud / postare.
+
+## Nou în v0.4
+- [Generare foto și video AI local cu ComfyUI](docs/AI_GENERATOR_v0_4.md). Modul foto folosește checkpoint local, iar video un workflow API-format importat de tine.
+- [Acces securizat iPhone prin HTTPS LAN](docs/IPHONE_HTTPS_LAN_v0_4.md). Pornește `START_VEGA_IPHONE_HTTPS.bat` pe Windows; CA locală se instalează și se autorizează manual pe iPhone.
+- PWA instalabilă din Safari, joburi AI în bibliotecă, autentificare și protecții de bază. Un singur job AI nou la un moment dat, pentru a proteja resursele PC-ului.
+- **24 teste automate** au trecut, inclusiv simulări ComfyUI și TLS LAN. Browserul/iPhone-ul real trebuie testat pe dispozitivul tău.
+
+
+## Instrucțiuni pentru funcțiile existente și v0.3
+
+**Versiune:** `v0.4.0` — MVP executabil **local-first**, cu autentificare și teste automate.
 
 > **Acesta nu este produsul complet A–Z.** Este prima versiune de aplicație funcțională, pe care o vom extinde etapizat. Nu sunt conectate conturi, servere externe, GPU cloud și niciun API social. Nu publică pe internet.
 
@@ -19,7 +32,7 @@
 - **Migrare SQLite automată v0.2 → v0.3**, cu păstrarea materialelor locale.
 - **Jurnal de audit**, export JSON al materialelor aprobate.
 - **Regulă conținut 18+**: clasificarea 18+ este permisă doar în schițele Fanvue; drepturile asupra materialului și etichetarea AI trebuie confirmate înainte de aprobare.
-- **Fără YouTube, fără KoboldCpp**, fără autentificări Fanvue/Meta/TikTok/X/Reddit, fără plăți sau generare foto/video cu model AI.
+- **În v0.3:** fără YouTube, fără KoboldCpp, fără autentificări Fanvue/Meta/TikTok/X/Reddit și fără generare cu model AI; în v0.4 este disponibil doar conectorul ComfyUI local opțional.
 
 ## Pornește în Windows
 
