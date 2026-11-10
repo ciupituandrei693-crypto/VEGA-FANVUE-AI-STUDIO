@@ -25,3 +25,9 @@ credentials/
 dist/
 build/
 dist_installer/
+
+# Installer local - third party dependencies and weights
+tools/
+local_models/
+*.log
+local_data/vega_install_report.json
