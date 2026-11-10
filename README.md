@@ -16,7 +16,7 @@
 - **Bibliotecă media privată** JPG/PNG/WebP/MP4, maxim 50 MB/fișier; fotografiile sunt decodate și validate cu Pillow (nu doar magic bytes). Descărcare autentificată.
 - **Media Studio local (v0.3)**: grafic promoțional pornind de la fotografie proprie și text introdus de utilizator (9:16, 1:1, 16:9), plus export MP4 silențios din 1–6 fotografii cu FFmpeg local. Nu este un generator de imagini/video AI. Nu creează noi fețe sau animație generativă.
 - **Separare media între personaje**: toate fotografiile de intrare la o compunere trebuie să aparțină profilului selectat; rezultatul rămâne în biblioteca acelui profil.
-- **Migrare SQLite automată v0.3 → v0.3**, cu păstrarea materialelor locale.
+- **Migrare SQLite automată v0.2 → v0.3**, cu păstrarea materialelor locale.
 - **Jurnal de audit**, export JSON al materialelor aprobate.
 - **Regulă conținut 18+**: clasificarea 18+ este permisă doar în schițele Fanvue; drepturile asupra materialului și etichetarea AI trebuie confirmate înainte de aprobare.
 - **Fără YouTube, fără KoboldCpp**, fără autentificări Fanvue/Meta/TikTok/X/Reddit, fără plăți sau generare foto/video cu model AI.
