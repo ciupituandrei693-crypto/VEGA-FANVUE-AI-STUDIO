@@ -73,6 +73,7 @@ with sync_playwright() as p:
             page.locator('#v09-metric-form').wait_for()
             open_nav('backup')
             page.locator('#v09-security').get_by_text('Raport securitate').wait_for()
+            page.wait_for_timeout(300)  # Allow mobile sidebar close transition to complete.
             page.screenshot(path=f'/mnt/data/VEGA_v09_preview_{name}.png',full_page=True)
             if errors:raise AssertionError(f'{name} JS errors: {errors}')
             print(f'Offline browser preview {name}: OK; all v0.9 views; 0 JS errors')
