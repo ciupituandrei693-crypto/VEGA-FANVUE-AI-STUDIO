@@ -1,0 +1,16 @@
+VEGA UNIVERSAL — INSTALARE WINDOWS
+
+1) Dezarhiveaza pachetul in C:\VEGA. Fa backup daca ai deja date VEGA.
+2) Dublu-click pe INSTALL_ALL_WINDOWS.bat.
+3) Verifica ce se instaleaza si confirma prin tastarea INSTALARE.
+4) La promptul pentru Ollama, tasteaza DA doar daca vrei descarcarea modelului Qwen 0.6B.
+5) Dupa finalizare, ruleaza VERIFY_ALL_WINDOWS.bat.
+6) Porneste START_VEGA_FULL_WINDOWS.bat si deschide http://127.0.0.1:8765.
+7) Pentru iPhone, citeste docs\IPHONE_HTTPS_LAN_v0_4.md si porneste START_VEGA_IPHONE_HTTPS.bat.
+
+Instalatorul va incerca VEGA + Python + FFmpeg + Git + Ollama + ComfyUI CPU + Manager + faster-whisper.
+VoiceStudio necesita programul oficial Windows, Chatterbox si LatentSync sunt in asteptarea testelor compatibilitatii cu RX 580.
+Fara server cloud, GPU inchiriat, conturi sociale conectate si plati.
+
+DETALII COMPLETE: docs\INSTALL_ALL_WINDOWS.md
+RAPORT AUTOMAT: local_data\vega_install_report.json
