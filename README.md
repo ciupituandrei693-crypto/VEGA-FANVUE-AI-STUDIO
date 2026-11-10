@@ -1,50 +1,31 @@
 # ♛ VEGA UNIVERSAL — FANVUE AI STUDIO
 
-**Versiune:** `v0.4.0` — generare AI locală (conector ComfyUI) și acces iPhone HTTPS în LAN.
+**Version: v0.9.0-dev (stages 5–9 implementation package, local-first).**
 
-> ComfyUI și modelele foto/video NU sunt instalate în pachet. Nu am verificat generarea pe placa ta video. HTTPS iPhone este pregătit în cod, dar trebuie configurat și testat pe dispozitivul tău. Fără server extern / GPU cloud / postare.
+**Important:** This is a functional local development release, **not** an end-to-end completed production system. Features requiring external provider authorization, actual AI weights or physical-device validation are clearly identified as pending. No social publishing, payments, cloud GPU or external server use. Repository is public: no private media/credentials are included.
 
-## Nou în v0.4
-- [Generare foto și video AI local cu ComfyUI](docs/AI_GENERATOR_v0_4.md). Modul foto folosește checkpoint local, iar video un workflow API-format importat de tine.
-- [Acces securizat iPhone prin HTTPS LAN](docs/IPHONE_HTTPS_LAN_v0_4.md). Pornește `START_VEGA_IPHONE_HTTPS.bat` pe Windows; CA locală se instalează și se autorizează manual pe iPhone.
-- PWA instalabilă din Safari, joburi AI în bibliotecă, autentificare și protecții de bază. Un singur job AI nou la un moment dat, pentru a proteja resursele PC-ului.
-- **24 teste automate** au trecut, inclusiv simulări ComfyUI și TLS LAN. Browserul/iPhone-ul real trebuie testat pe dispozitivul tău.
+## What is implemented
 
+| Area | Available functionality |
+|---|---|
+| Existing v0.2–v0.4 | 9 models, authentication, posts/drafts, approvals, Kill Switch, editorial calendar, media library, FFmpeg slideshows, ComfyUI local adapter, opt-in HTTPS LAN/PWA |
+| v0.5 | Model-specific visual/persona/voice presets and reference-image ownership checks; editable ComfyUI prompt builder; Ollama loopback model detection; optional CPU-only faster-whisper API |
+| v0.6 | SEO packs via offline templates or explicit local Ollama model, audit, no self-approval |
+| v0.7 | Fanvue, Instagram, TikTok, X, Reddit connector registry plus auditable **manual-only** delivery bundles, invalidated after post edit |
+| v0.8 | User-entered daily impressions, clicks, subscribers, gross/cost USD, by-model totals and simplified net |
+| v0.9 | Hash-verified SQLite+media backups, offline restore CLI (empty directory only), security status, desktop/mobile PWA view, optional Windows build scripts |
 
-## Instrucțiuni pentru funcțiile existente și v0.3
+**Not implemented / not validated:** OAuth provider integrations and automatic posting, Fanvue revenue API, live SEO trends, Chatterbox/VoiceStudio TTS/lip-sync, actual image-generation benchmark on user's AMD graphics card, actual iPhone/Android hardware tests, a prebuilt Windows installer. See [acceptance matrix](docs/V09_ACCEPTANCE_MATRIX.md).
 
-**Versiune:** `v0.4.0` — MVP executabil **local-first**, cu autentificare și teste automate.
+## Quick start — Windows
 
-> **Acesta nu este produsul complet A–Z.** Este prima versiune de aplicație funcțională, pe care o vom extinde etapizat. Nu sunt conectate conturi, servere externe, GPU cloud și niciun API social. Nu publică pe internet.
+1. Install Python 3.12+ from [python.org](https://www.python.org/downloads/windows/) and enable PATH.
+2. Unzip to `C:\VEGA`. Run `START_VEGA_WINDOWS.bat`. First run creates `.venv` and installs free Python packages, which requires internet on that first run.
+3. Browse to **http://127.0.0.1:8765** on the PC. Create a local admin with a 12+ character password. No default password exists.
+4. Create private media and presets. To use image/video AI, install compatible ComfyUI and models **separately**; for local text AI, install Ollama and a compatible language model **separately**.
+5. To reach your iPhone on the same trusted Wi-Fi, use `START_VEGA_IPHONE_HTTPS.bat` and [local HTTPS instructions](docs/IPHONE_HTTPS_LAN_v0_4.md), **only after PC admin setup**.
 
-## Ce funcționează în această versiune
-
-- **Dashboard universal** responsiv pentru Windows și ecrane de telefon; PWA cu manifest și icon.
-- **9 profiluri AI**: Aria Vale, Maya Solis, Elena Hart, Nova Quinn, Selene Voss, Claudia Rose, Irina Sky, Liora Maren, Evelyn Frost.
-- **Login local** cu parolă hash-uită scrypt, sesiuni temporare și autentificare obligatorie pentru API și fișierele media.
-- **SEO Studio offline**: 3 hook-uri, descriere, hashtaguri și CTA pentru Instagram, TikTok, X, Reddit și Fanvue. În acest MVP sunt șabloane, *nu un model AI generativ și nu cercetare live de trenduri*.
-- **Schițe și aprobări**: `draft → in_review → approved → scheduled_local`. Salvarea unei modificări anulează aprobarea și data programată.
-- **Kill Switch**, activ la prima pornire, care blochează aprobarea și programarea.
-- **Calendar local**, doar în baza de date; nimic nu este transmis către platforme.
-- **Bibliotecă media privată** JPG/PNG/WebP/MP4, maxim 50 MB/fișier; fotografiile sunt decodate și validate cu Pillow (nu doar magic bytes). Descărcare autentificată.
-- **Media Studio local (v0.3)**: grafic promoțional pornind de la fotografie proprie și text introdus de utilizator (9:16, 1:1, 16:9), plus export MP4 silențios din 1–6 fotografii cu FFmpeg local. Nu este un generator de imagini/video AI. Nu creează noi fețe sau animație generativă.
-- **Separare media între personaje**: toate fotografiile de intrare la o compunere trebuie să aparțină profilului selectat; rezultatul rămâne în biblioteca acelui profil.
-- **Migrare SQLite automată v0.2 → v0.3**, cu păstrarea materialelor locale.
-- **Jurnal de audit**, export JSON al materialelor aprobate.
-- **Regulă conținut 18+**: clasificarea 18+ este permisă doar în schițele Fanvue; drepturile asupra materialului și etichetarea AI trebuie confirmate înainte de aprobare.
-- **În v0.3:** fără YouTube, fără KoboldCpp, fără autentificări Fanvue/Meta/TikTok/X/Reddit și fără generare cu model AI; în v0.4 este disponibil doar conectorul ComfyUI local opțional.
-
-## Pornește în Windows
-
-1. Instalează Python 3.12+ de la https://www.python.org/downloads/windows/ și activează `Add python.exe to PATH`.
-2. Descarcă pachetul ZIP **VEGA_UNIVERSAL_DEV_v0_3.zip** din conversație sau clonează repository-ul GitHub.
-3. Dezarhivează într-un folder personal, de exemplu `C:\VEGA` (nu în `Program Files`).
-4. Dublu-click pe **`START_VEGA_WINDOWS.bat`**. Scriptul creează un mediu virtual în `.venv` și instalează dependențele gratuite cu `pip`. *Pentru prima instalare este necesar internet pentru Python packages; aplicația, după instalare, nu face cereri către API-uri externe.*
-5. Pentru export MP4, instalează separat **FFmpeg** pe Windows și asigură-te că `ffmpeg.exe` este accesibil în `PATH`; compunerea graficelor PNG nu are nevoie de FFmpeg. Nu instala din arhiva FFmpeg-master.zip: aceea conține cod sursă, nu ffmpeg.exe.
-6. Deschide http://127.0.0.1:8765 pe **același PC**. Creează administratorul local, cu parolă de minimum 12 caractere. Nu există parolă implicită.
-7. Dezactivează Kill Switch doar când dorești să aprobi/programmezi materialele. **Această acțiune nu pornește nicio publicare online.**
-
-Poți rula și manual:
+For manual development:
 
 ```powershell
 py -3 -m venv .venv
@@ -52,52 +33,32 @@ py -3 -m venv .venv
 .venv\Scripts\python -m uvicorn vega.main:app --host 127.0.0.1 --port 8765
 ```
 
-## Media Studio v0.3
+### Optional add-ons (not included)
 
-Deschide **Biblioteca media** și încarcă cel puțin o fotografie PNG/JPG/WebP pentru modelul dorit. Apoi intră în **Media Studio · Local**, selectează același model și fotografia, alege formatul și scrie un titlu pentru export PNG. Pentru MP4, selectează 1–6 fotografii și durata per fotografie; este necesar FFmpeg instalat local. Poți previzualiza și descărca materialele rezultate. Folosește doar materiale pentru care ai drepturi.
+- **ComfyUI:** `http://127.0.0.1:8188`, original v0.4 API connector; image checkpoints and video workflows need installation and testing.
+- **Ollama:** `http://127.0.0.1:11434`; install local model before using AI draft mode. No external URL is permitted.
+- **FFmpeg:** required for video slideshows on CPU.
+- **faster-whisper:** only if manually installed, with `VEGA_WHISPER_MODEL_PATH` pointing to an existing local model directory. No automatic model downloads.
+- Windows build recipes in `windows/` are optional and have not yet been tested on actual Windows.
 
-**Limitări:** montajul MP4 este slideshow static fără muzică/voce; nu există text-to-image, text-to-video, animare AI, render 3D sau lip-sync integrate. Calitatea imaginii depinde de fotografia furnizată; nu se garantează consistența fețelor la utilizarea altor imagini. Interfața este responsive, dar conectarea reală a iPhone-ului de la distanță nu este configurată.
+## Docs and tests
 
-## Date private și backup
-
-- Baza SQLite se creează la `local_data/vega.sqlite3`.
-- Fișierele încărcate se salvează în `local_data/media/`.
-- Acest director este exclus din GitHub. **Nu publica fișierele `local_data`, copii ale bazelor de date sau portrete private într-un repository public.**
-- Pentru backup închide aplicația și copiază întregul director `local_data` pe o unitate securizată.
-- Sesiunile expiră după 12 ore. Nu există încă recuperare automată a parolei; păstrează parola într-un manager de parole.
-
-## iPhone / Android
-
-Designul este adaptabil și există manifest PWA, însă **accesul de pe telefon nu este activat încă**: serverul este legat deliberat la `127.0.0.1`, accesibil numai PC-ului local. Pentru iOS va urma o etapă cu TLS/HTTPS, autentificare testată și acces securizat între dispozitive (fără expunere neprotejată de port și fără a configura încă serverul extern). Adăugarea pe Home Screen și testele iOS reale nu au fost finalizate.
-
-## Teste
+- [Operator workflow](docs/V09_WORKFLOW.md)
+- [Acceptance and security matrix](docs/V09_ACCEPTANCE_MATRIX.md)
+- [AI image/video setup](docs/AI_GENERATOR_v0_4.md)
+- [iPhone HTTPS](docs/IPHONE_HTTPS_LAN_v0_4.md)
+- [Media Studio](docs/MEDIA_STUDIO_v0_3.md)
 
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
+node --check web/app.js
 ```
 
-În mediul de dezvoltare au trecut **15 teste automate**. Acestea nu înlocuiesc un audit de securitate independent sau testarea iOS/Windows pe echipamente reale.
+Baseline + new tests: **39 passed** in the authoring container. Optional Chromium desktop + mobile viewport smoke tests used mocked API data and passed; **not physical iOS/Android tests**.
 
-## Arhitectură
+## Protect private data
 
-- `vega/main.py`: API FastAPI, aprobare, calendar, upload, audit, autentificare și Kill Switch.
-- `vega/store.py`: SQLite, schema locală, modelele și jurnalul.
-- `vega/security.py`: hash scrypt, sesiuni Bearer expirabile.
-- `vega/seo.py`: propuneri SEO strict offline, prin șabloane.
-- `web/`: interfață responsive fără build Node, manifest PWA și iconuri.
-- `tests/`: teste de integrare API.
-- `docs/`: planul etapelor următoare și limitele aplicației.
+Private database, media and AI models are **never** part of this public repository. Backups go to a separate private directory. Preserve copies and test restoration only with VEGA stopped. The repository `.gitignore` intentionally excludes `.env`, `local_data/`, backups, credentials and compressed archives. Do not upload Fanvue passwords, tokens, KYC records or private photographs.
 
-Când trecem la producție, analizăm și integrăm controlat bibliotecile trimise: FastAPI, Next.js, Postiz, n8n, Instagram Agent Skill, Claude Content Skills, HyperFrames, FFmpeg, VoiceStudio, LatentSync. **Nu sunt instalate sau incluse în v0.3, cu excepția FastAPI ca dependență Python.** KoboldCpp a fost eliminat conform cerinței.
-
-## Limite și condiții de siguranță
-
-- Nu există rută API care publică la servicii externe.
-- Lipsesc conectorii OAuth oficiali, notificările Push, editarea video AI, programatorul care execută joburi reale, fluxurile de generare AI și sistemul de plăți.
-- Nu expune serverul din această versiune direct pe internet sau pe Wi‑Fi public. API-ul este local, fără protecții avansate pentru producție.
-- Folosește numai personaje și materiale asupra cărora ai drepturile necesare, indică faptul că personajele sunt generate AI și respectă KYC și politicile platformelor.
-- Înainte de integrarea oricărui repository terț, verificăm licențele, securitatea și compatibilitatea hardware.
-- Serverul extern (~25 USD/lună) și GPU-ul cloud (plafon 50 USD/lună) rămân **strict ultimele etape și necesită aprobare explicită**.
-
-Vezi [Planul v0.3 și etapele A–Z](docs/NEXT_STEPS.md).
+**Safety and scope:** Only original fictional adult AI identities and user-licensed assets; respect platform rules, local laws and disclosure requirements. **No YouTube. No KoboldCpp.** All AI and moderation decisions are supervised. Cloud/server infrastructure remains last-stage and only after explicit spending approval.
