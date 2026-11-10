@@ -77,12 +77,17 @@ def init_db():
         CREATE TABLE IF NOT EXISTS media (
           id TEXT PRIMARY KEY, filename TEXT NOT NULL, stored_name TEXT NOT NULL,
           mime_type TEXT NOT NULL, file_size INTEGER NOT NULL,
-          model_id TEXT REFERENCES models(id), created_at TEXT NOT NULL);
+          model_id TEXT REFERENCES models(id), created_at TEXT NOT NULL,
+          origin TEXT NOT NULL DEFAULT 'upload');
         CREATE TABLE IF NOT EXISTS audit (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           at TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
           entity TEXT NOT NULL, detail TEXT NOT NULL);
         """)
+        # Compatibility migration for users upgrading from v0.2: no data is removed.
+        columns={r[1] for r in c.execute("PRAGMA table_info(media)")}
+        if "origin" not in columns:
+            c.execute("ALTER TABLE media ADD COLUMN origin TEXT NOT NULL DEFAULT 'upload'")
         for model_id, name, niche, voice, accent in MODELS:
             c.execute("INSERT OR IGNORE INTO models(id,name,niche,voice,accent,updated_at) VALUES(?,?,?,?,?,?)",
                       (model_id, name, niche, voice, accent, utcnow()))
