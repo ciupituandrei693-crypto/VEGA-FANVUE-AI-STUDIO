@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import io
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from vega import store
 from vega.main import app, LOGIN_FAILURES
 
@@ -124,7 +125,7 @@ def test_seo_is_offline(authed):
 
 def test_media_upload_and_private_download(authed):
     client,headers=authed
-    png=(b'\x89PNG\r\n\x1a\n'+b'\0'*128)
+    buf=io.BytesIO();Image.new('RGB',(160,200),'#926aab').save(buf,format='PNG');png=buf.getvalue()
     data={'model_id':'aria'}
     files={'file':('look.png',io.BytesIO(png),'image/png')}
     r=client.post('/api/media',headers=headers,data=data,files=files)
@@ -152,3 +153,77 @@ def test_app_and_assets(client):
     assert client.get('/assets/style.css').status_code==200
     assert client.get('/assets/manifest.webmanifest').status_code==200
     assert "frame-ancestors 'none'" in client.get('/').headers['content-security-policy']
+
+
+def _upload_image(client,headers,model='aria',name='sample.png'):
+    buf=io.BytesIO();Image.new('RGB',(180,240),'#8765ab').save(buf,format='PNG')
+    r=client.post('/api/media',headers=headers,data={'model_id':model},
+                  files={'file':(name,io.BytesIO(buf.getvalue()),'image/png')})
+    assert r.status_code==201,r.text
+    return r.json()['id']
+
+def test_studio_image_private_local_and_isolated(authed):
+    client,headers=authed
+    first=_upload_image(client,headers,'aria')
+    s=client.get('/api/media/studio/status',headers=headers)
+    assert s.status_code==200 and s.json()['image_composer_ready']
+    assert s.json()['ai_image_generation'] is False
+    assert client.get('/api/media/studio/status').status_code==401
+    req={'model_id':'aria','source_media_id':first,'format':'story',
+         'headline':'O nouă poveste','subtitle':'Fashion editorial'}
+    assert client.post('/api/media/studio/image',json=req).status_code==401
+    r=client.post('/api/media/studio/image',headers=headers,json=req)
+    assert r.status_code==201,r.text
+    result=r.json(); assert result['published'] is False
+    data=client.get('/api/media/'+result['id']+'/download',headers=headers).content
+    assert data.startswith(b'\x89PNG')
+    with Image.open(io.BytesIO(data)) as im: assert im.size==(720,1280)
+    listing=client.get('/api/media',headers=headers).json()
+    assert any(x['id']==result['id'] and x['origin']=='graphic' for x in listing)
+    assert any(x['id']==first and x['origin']=='upload' for x in listing)
+    # No cross-character media reuse.
+    req['model_id']='maya'
+    assert client.post('/api/media/studio/image',headers=headers,json=req).status_code==422
+    # Tampered/nonexistent media IDs are rejected.
+    req['model_id']='aria';req['source_media_id']='not-found'
+    assert client.post('/api/media/studio/image',headers=headers,json=req).status_code==422
+    events=client.get('/api/audit',headers=headers).json()
+    assert any(e['action']=='media.studio.graphic' for e in events)
+
+def test_studio_rejects_fake_png(authed):
+    client,headers=authed
+    fake=b'\x89PNG\r\n\x1a\n'+b'\0'*128
+    r=client.post('/api/media',headers=headers,data={'model_id':'aria'},
+                  files={'file':('fake.png',io.BytesIO(fake),'image/png')})
+    assert r.status_code==415
+
+def test_video_montage_local(authed):
+    client,headers=authed
+    first=_upload_image(client,headers,'aria')
+    req={'model_id':'aria','media_ids':[first], 'format':'square','seconds_per_image':2}
+    # Detects duplicate input and rejects other-model images, before FFmpeg runs.
+    assert client.post('/api/media/studio/video',headers=headers,json={**req,'media_ids':[first,first]}).status_code==422
+    assert client.post('/api/media/studio/video',headers=headers,json={**req,'model_id':'maya'}).status_code==422
+    from vega.media_studio import ffmpeg_status
+    if not ffmpeg_status()['available']:
+        assert client.post('/api/media/studio/video',headers=headers,json=req).status_code==422
+        return
+    r=client.post('/api/media/studio/video',headers=headers,json=req)
+    assert r.status_code==201,r.text
+    assert r.json()['duration_seconds']==2 and r.json()['published'] is False
+    media=client.get('/api/media/'+r.json()['id']+'/download',headers=headers).content
+    assert len(media)>1000 and b'ftyp' in media[:20]
+
+def test_media_schema_migrates_v02_without_deleting_data(tmp_path,monkeypatch):
+    import sqlite3
+    monkeypatch.setattr(store,'DATA_DIR',tmp_path)
+    monkeypatch.setattr(store,'DB',tmp_path/'old.sqlite3')
+    monkeypatch.setattr(store,'MEDIA_DIR',tmp_path/'media')
+    con=sqlite3.connect(store.DB)
+    con.execute('CREATE TABLE media (id TEXT PRIMARY KEY,filename TEXT,stored_name TEXT,mime_type TEXT,file_size INTEGER,model_id TEXT,created_at TEXT)')
+    con.execute("INSERT INTO media VALUES('old','look.png','old.png','image/png',10,'aria','2026-10-01')")
+    con.commit();con.close()
+    store.init_db()
+    with store.connect() as c:
+        x=c.execute("SELECT origin FROM media WHERE id='old'").fetchone()
+        assert x['origin']=='upload'
