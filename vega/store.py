@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import os
+import sys
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path(os.environ.get("VEGA_DATA_DIR", str(ROOT / "local_data"))).resolve()
+# Bundled Windows builds store private user data outside Program Files / the executable.
+DEFAULT_DATA_DIR = (Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'VEGA' / 'local_data') if getattr(sys,'frozen',False) else (ROOT / 'local_data')
+DATA_DIR = Path(os.environ.get("VEGA_DATA_DIR", str(DEFAULT_DATA_DIR))).resolve()
 DB = DATA_DIR / "vega.sqlite3"
 MEDIA_DIR = DATA_DIR / "media"
 
