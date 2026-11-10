@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#100b1c">
+  <meta name="description" content="VEGA — manager local, supravegheat, pentru nouă personaje AI.">
+  <link rel="manifest" href="/assets/manifest.webmanifest">
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/icon-192.png">
+  <link rel="stylesheet" href="/assets/style.css">
+  <title>VEGA — FANVUE AI STUDIO</title>
+</head>
+<body>
+  <div class="ambient glow-a"></div><div class="ambient glow-b"></div>
+  <div id="auth" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="logo auth-logo"><span class="crown">♛</span><span>VEGA<span class="logo-sub">FANVUE AI STUDIO</span></span></div>
+      <div class="eyebrow">CONTROL CENTER · LOCAL EDITION</div>
+      <h1 id="auth-title">Conectare la VEGA</h1>
+      <p id="auth-subtitle">Datele tale rămân pe calculator. Nicio conexiune la serverul extern.</p>
+      <form id="auth-form">
+        <label>Utilizator <input id="auth-username" name="username" required minlength="3" maxlength="40" autocomplete="username" placeholder="admin"></label>
+        <label>Parolă <input id="auth-password" name="password" type="password" required autocomplete="current-password" placeholder="Minimum 12 caractere la prima pornire"></label>
+        <button class="btn primary full" id="auth-submit" type="submit">Intră în VEGA <span>→</span></button>
+      </form>
+      <p id="auth-error" class="error"></p>
+      <p class="auth-foot">🔒 Acces local · Fără abonamente · Fără publicare online</p>
+    </div>
+  </div>
+  <div id="app-shell" class="shell hidden">
+    <aside class="sidebar">
+      <div class="logo"><span class="crown">♛</span><span>VEGA<span class="logo-sub">FANVUE AI STUDIO</span></span></div>
+      <div class="side-caption">WORKSPACE LOCAL</div>
+      <nav id="navigation" aria-label="Navigare principală">
+        <button data-view="dashboard" class="nav-link active"><span>◈</span> Prezentare generală</button>
+        <button data-view="models" class="nav-link"><span>♙</span> Cele 9 modele <span class="nav-count">09</span></button>
+        <button data-view="studio" class="nav-link"><span>✦</span> SEO & Content Studio</button>
+        <button data-view="approvals" class="nav-link"><span>✓</span> Centrul de aprobări</button>
+        <button data-view="calendar" class="nav-link"><span>▦</span> Calendar editorial</button>
+        <button data-view="media" class="nav-link"><span>▧</span> Biblioteca media</button>
+        <button data-view="audit" class="nav-link"><span>◷</span> Jurnal & siguranță</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="local-chip"><span class="live-dot"></span> MOTOR LOCAL ACTIV</div>
+        <div class="small-note">Nivelul 2 · Automatizare supravegheată<br>Server extern: neconectat<br>GPU cloud: dezactivat</div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left"><button id="mobile-menu" class="icon-btn mobile-only" aria-label="Deschide meniul">☰</button><span class="crumb">VEGA / <strong id="page-crumb">Prezentare generală</strong></span></div>
+        <div class="topbar-right">
+          <span id="paused-pill" class="status-pill pause">● KILL SWITCH ACTIV</span>
+          <span class="topbar-mode">◌ <span>LOCAL ONLY</span></span>
+          <button id="logout-btn" class="icon-btn" title="Deconectare">⇥</button>
+        </div>
+      </header>
+      <div id="view" class="view"></div>
+      <footer class="footer">VEGA UNIVERSAL <span>v0.2 · MVP local</span> <span>Nu publică online · Fără YouTube</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <div id="modal" class="modal-backdrop hidden"><div class="modal-card" role="dialog" aria-modal="true"><button class="modal-close icon-btn" id="modal-close" aria-label="Închide">×</button><div id="modal-body"></div></div></div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
